@@ -1,0 +1,9 @@
+starlette
+uvicorn
+python-dotenv
+httpx
+groq
+sentence-transformers
+numpy
+rapidfuzz
+spacy==3.7.5

@@ -1,16 +1,63 @@
-# React + Vite
+# Researchify — AI Research Engine
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Researchify turns a natural-language question into a synthesized, citation-backed
+answer. It pulls from six live sources, ranks them with semantic relevance,
+detects opposing viewpoints, builds a knowledge graph, and synthesizes a grounded
+response with an LLM — all from a single query.
 
-Currently, two official plugins are available:
+## Architecture
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+```
+researchify/
+├── frontend/   React 19 + Vite + Tailwind UI
+└── backend/    Python async intelligence pipeline (Starlette)
+```
 
-## React Compiler
+The frontend sends a query to the backend, which runs a 7-stage pipeline and
+returns ranked sources, a debate analysis, a knowledge graph, and an LLM summary.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Backend — intelligence pipeline
 
-## Expanding the ESLint configuration
+`plan → fetch → filter → score → debate → graph → synthesize`
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+| Stage | What it does |
+|-------|--------------|
+| **Plan** | Detects query intent and weights sources accordingly |
+| **Fetch** | Concurrently queries arXiv, GitHub, Reddit, StackOverflow, Wikipedia, and News (`asyncio` + `httpx`) |
+| **Filter** | Fuzzy de-duplication (rapidfuzz) and quality/intent filtering |
+| **Score** | Dense semantic reranking with `sentence-transformers` (MiniLM) fused with authority, freshness-decay, engagement, and intent-fit signals into an explainable confidence score |
+| **Debate** | Extracts pro/con sides, agreements, disagreements, and numeric conflicts |
+| **Graph** | spaCy NER entity extraction → knowledge graph (React Flow nodes/edges) |
+| **Synthesize** | Groq Llama 3.3 70B generates a structured, schema-validated, source-grounded answer |
+
+**Stack:** Python, Starlette (ASGI), sentence-transformers, spaCy, rapidfuzz,
+Groq (Llama 3.3 70B), NumPy, httpx.
+
+### Run the backend
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python -m spacy download en_core_web_sm
+# set GROQ_API_KEY (and optionally NEWS_API_KEY) in a .env file
+uvicorn app:app --reload --port 8000
+```
+
+API docs are served at `http://localhost:8000/docs`.
+
+## Frontend
+
+React 19 + Vite + Tailwind v4, with an interactive knowledge graph
+(`@xyflow/react`), live pipeline-progress visualization, debate cards, a
+consensus meter, and Framer Motion animations.
+
+### Run the frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend reads the backend URL from the API constant in `src/Pages/Home.jsx`.

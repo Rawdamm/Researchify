@@ -3,22 +3,26 @@
 *.env
 .env.*
 
-# Node / frontend
-node_modules/
-dist/
-build/
-.vite/
-
-# Python / backend
+# Python
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environment
 .venv/
 venv/
 env/
-*.egg-info/
 
 # IDE / OS
 .DS_Store
+.claude/
+*.code-workspace
 .vscode/
 .idea/
-*.code-workspace
+
+# Build / dist
+*.egg-info/
+dist/
+build/
