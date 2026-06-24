@@ -7,14 +7,21 @@ import "@fontsource/space-grotesk";
 import PlatformsMarquee from "../components/PlatformsMarquee";
 
 import SearchBox from "../components/SearchBox";
-import SummaryCard from "../components/SummaryCard";
+
 import SourceCard from "../components/SourceCard";
 import TrendTags from "../components/TrendTags";
 import RelatedQuestions from "../components/RelatedQuestions";
 import IconRail from "../components/IconRail";
 import ParticleField from "../components/ParticleField";
+import PipelineProgress from "../components/PipelineProgress";
+import DebateCard from "../components/DebateCard";
+import KnowledgeGraph from "../components/KnowledgeGraph";
+import ConsensusMeter from "../components/ConsensusMeter";
+import CitedText from "../components/CitedText";
+import PersonaCards from "../components/PersonaCards";
+import PipelineReplay from "../components/PipelineReplay";
 
-import dummyData from "../data/dummyData";
+const API_URL = "https://web-production-4f1c8.up.railway.app/research";
 
 export default function Home() {
 
@@ -122,44 +129,91 @@ const [sidebarOpen, setSidebarOpen] = useState(false);
 //   }, 2000);
 // };
 
-const handleSearch = () => {
-  if (!query.trim()) return;
+const handleSearch = async (explicitQuery = null) => {
+  const q = (typeof explicitQuery === "string" ? explicitQuery : query).trim();
+  if (!q) return;
 
+  setQuery(q);
   setSearched(true);
   setLoading(true);
 
   const userMessage = {
     id: Date.now(),
     role: "user",
-    content: query,
+    content: q,
   };
 
-  const enabledSourceIds = sources.filter((source) => source.enabled).map((source) => source.id);
+  setConversation((prev) => [...prev, userMessage]);
 
-  setTimeout(() => {
-    const filteredSources =
-    dummyData.sources.filter((source) =>
-        enabledSourceIds.includes(source.id)
-    );
+  const enabledSourceIds = sources
+    .filter((s) => s.enabled && !s.pro)
+    .map((s) => s.id);
+
+  try {
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: q,
+        sources: enabledSourceIds,
+        max_results: 10,
+        include_debate: true,
+        include_graph: true,
+        include_llm: true,
+      }),
+    });
+
+    const data = await response.json();
+    const llm = data.llm_response || {};
+    const ranked = data.ranked_sources || [];
 
     const assistantMessage = {
+      id: Date.now() + 1,
+      role: "assistant",
+      data: {
+        takeaway: llm.takeaway || "No summary available.",
+        conclusion: llm.final_conclusion || "",
+        summary: llm.detailed_answer || "",
+        trends: llm.trends || [],
+        relatedQuestions: llm.related_questions || [],
+        debate: data.debate || null,
+        graph: data.graph || null,
+        plan: data.plan || null,
+        meta: data.meta || null,
+        filterSummary: data.filter_summary || null,
+        sources: ranked.map((s) => ({
+          id: s.platform?.toLowerCase(),
+          platform: s.platform,
+          title: s.title,
+          snippet: s.snippet || "",
+          confidence: `${Math.round(s.confidence)}%`,
+          link: s.url,
+          time: s.date,
+        })),
+      },
+    };
+
+    setConversation((prev) => [...prev, assistantMessage]);
+  } catch (err) {
+    console.error("API error:", err);
+    setConversation((prev) => [
+      ...prev,
+      {
         id: Date.now() + 1,
         role: "assistant",
         data: {
-            ...dummyData,
-            sources: filteredSources,
+          takeaway: "Something went wrong. Please try again.",
+          summary: "",
+          trends: [],
+          relatedQuestions: [],
+          sources: [],
         },
-    };
-
-    setConversation((prev) => [
-      ...prev,
-      userMessage,
-      assistantMessage,
+      },
     ]);
-
+  } finally {
     setLoading(false);
     setQuery("");
-  }, 2000);
+  }
 };
 const handleNewChat = () => {
  setConversation([]);
@@ -517,27 +571,7 @@ const handleNewChat = () => {
 </div>
         {/* Loading */}
 
-        {loading && (
-          <div className="mt-16 w-full text-center space-y-3">
-
-            <p className="text-sm md:text-base text-slate-400">
-              🔍 Searching Reddit...
-            </p>
-
-            <p className="text-sm md:text-base text-slate-400">
-              📚 Searching Arxiv...
-            </p>
-
-            <p className="text-sm md:text-base text-slate-400">
-              🌐 Searching News...
-            </p>
-
-            <p className="text-sm md:text-base text-orange-400">
-              ✨ Generating Summary...
-            </p>
-
-          </div>
-        )}
+        {loading && <PipelineProgress active={loading} />}
 
         {/* Results */}
 
@@ -573,24 +607,24 @@ const handleNewChat = () => {
 
           <div className="space-y-12">
 
-            <SummaryCard
-              takeaway={message.data.takeaway}
+            {/* 1 — AI Synthesis with inline citations */}
+            <CitedText
+              text={message.data.takeaway}
+              sources={message.data.sources}
             />
 
+            {/* 2 — Consensus Meter */}
+            <ConsensusMeter debate={message.data.debate} />
+
+            {/* 3 — Three Persona Perspectives */}
+            <PersonaCards sources={message.data.sources} />
+
+            {/* 4 — Sources grid */}
             <div>
-
-</div>
-
-
-
-            <div>
-
               <h2 className="text-xl md:text-2xl font-bold mb-6">
                 📚 Sources
               </h2>
-
               <div className="grid md:grid-cols-2 gap-6">
-
                 {message.data.sources.map((source) => (
                   <SourceCard
                     key={source.title}
@@ -601,26 +635,36 @@ const handleNewChat = () => {
                     time={source.time}
                   />
                 ))}
-
               </div>
-
             </div>
 
-            <div>
+            {/* 5 — Debate analysis */}
+            <DebateCard debate={message.data.debate} />
 
+            {/* 6 — Knowledge Graph (click node → rabbit-hole search) */}
+            <KnowledgeGraph
+              graph={message.data.graph}
+              onNodeClick={(label) => handleSearch(label)}
+            />
+
+            {/* 7 — Trends & follow-up questions */}
+            <div>
               <h2 className="text-xl md:text-2xl font-bold mb-6">
                 🔥 Trending Topics
               </h2>
-
-              <TrendTags
-                trends={message.data.trends}
-              />
+              <TrendTags trends={message.data.trends} />
               <RelatedQuestions
                 questions={message.data.relatedQuestions}
                 setQuery={setQuery}
               />
-
             </div>
+
+            {/* 8 — Pipeline Replay */}
+            <PipelineReplay
+              plan={message.data.plan}
+              meta={message.data.meta}
+              filterSummary={message.data.filterSummary}
+            />
 
           </div>
 
